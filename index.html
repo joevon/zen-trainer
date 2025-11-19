@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zen Breath Trainer (Synced)</title>
+    <title>Zen Breath Trainer (Cloud Sync)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
 
@@ -59,14 +59,11 @@
         }
     </style>
 
-    <!-- Firebase SDK Imports for Cloud Sync --><script type="module">
+    <!-- Firebase SDK Imports for Cloud Sync -->
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, query, orderBy, onSnapshot, addDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // IMPORTANT: Environment variables for Firebase setup
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 
         // ----------------------------------------------------------------------
         // ✅ YOUR CUSTOM FIREBASE CONFIGURATION (Provided by the user) ✅
@@ -81,7 +78,9 @@
         };
         // ----------------------------------------------------------------------
 
-        // Choose the configuration: Environment config if available and non-empty, otherwise use user's hosted config
+        // Boilerplate code to allow this single file to work both locally and on your hosted link
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const activeFirebaseConfig = 
             (typeof __firebase_config !== 'undefined' && Object.keys(firebaseConfig).length > 0) 
             ? firebaseConfig 
@@ -93,7 +92,7 @@
         let totalDurationSeconds = 0;
         let startTime = 0;
         let animationFrameId;
-        let currentScreen = 'routines'; // State for tab switching
+        let currentScreen = 'routines'; 
         
         let currentPhase; 
         let phaseStartTime; 
@@ -104,7 +103,7 @@
             userIdDisplay: document.getElementById('user-id-display'),
             routineSelector: document.getElementById('routine-selector'),
             mainScreen: document.getElementById('main-screen'),
-            historyScreen: document.getElementById('history-screen'), // New history screen element
+            historyScreen: document.getElementById('history-screen'),
             trainingScreen: document.getElementById('training-screen'),
             instructionText: document.getElementById('instruction-text'),
             progressBar: document.getElementById('progress-bar'),
@@ -190,6 +189,7 @@
 
             const routinesQuery = query(ref, orderBy("createdAt", "desc"));
 
+            // Real-time listener for Routines
             onSnapshot(routinesQuery, (snapshot) => {
                 const customRoutines = snapshot.docs.map(doc => ({ 
                     ...doc.data(), 
@@ -205,11 +205,12 @@
                 uiElements.userIdDisplay.textContent = `Sync Status: Cloud Connected (Public Data)`;
 
             }, (error) => {
-                console.error("Cloud Sync Error:", error);
+                // FALLBACK for chat window or network issues
+                console.error("Cloud Sync Error (Using built-in routines):", error);
                 renderRoutineSelector(builtInRoutines); 
                 uiElements.loadingState.classList.add('hidden');
                 uiElements.appContent.classList.remove('hidden');
-                uiElements.userIdDisplay.textContent = 'Sync Status: Connection Failed. Please ensure Firebase is initialized correctly.';
+                uiElements.userIdDisplay.textContent = 'Sync Status: Connection Failed. Please check console for details.';
             });
         }
         
@@ -230,22 +231,23 @@
         function getHistoryCollectionRef() {
              if (!db) return null;
             const collectionId = activeFirebaseConfig.projectId || appId;
-            // Public path for history
             const collectionPath = `artifacts/${collectionId}/public/data/history`; 
             return collection(db, collectionPath);
         }
 
-        async function saveTrainingHistory(routineName, durationSeconds) {
+        async function saveTrainingHistory(routineName, actualDurationSeconds, totalTargetSeconds, completed) {
             const ref = getHistoryCollectionRef();
             if (!ref) return;
 
             try {
                 await addDoc(ref, {
                     routineName: routineName,
-                    durationSeconds: durationSeconds,
+                    actualDurationSeconds: Math.floor(actualDurationSeconds),
+                    totalTargetSeconds: totalTargetSeconds,
+                    completed: completed,
                     timestamp: Date.now(),
                 });
-                console.log("Training history saved.");
+                console.log("Training history saved to cloud.");
             } catch (e) {
                 console.error("Error saving history: ", e);
             }
@@ -253,10 +255,14 @@
 
         function loadTrainingHistory() {
             const ref = getHistoryCollectionRef();
-            if (!ref) return;
+            if (!ref) {
+                uiElements.historyList.innerHTML = '<p class="text-center text-red-400 mt-8">Error: History database not available.</p>';
+                return;
+            }
 
             const historyQuery = query(ref, orderBy("timestamp", "desc"));
             
+            // Real-time listener for History
             onSnapshot(historyQuery, (snapshot) => {
                 uiElements.historyList.innerHTML = '';
                 
@@ -267,7 +273,13 @@
 
                 snapshot.forEach((doc) => {
                     const session = doc.data();
-                    const item = createHistoryItem(session.routineName, session.durationSeconds, session.timestamp);
+                    const item = createHistoryItem(
+                        session.routineName, 
+                        session.actualDurationSeconds, 
+                        session.totalTargetSeconds, 
+                        session.completed, 
+                        session.timestamp
+                    );
                     uiElements.historyList.appendChild(item);
                 });
             }, (error) => {
@@ -275,23 +287,99 @@
                 uiElements.historyList.innerHTML = `<p class="text-center text-red-400 mt-8">Error loading history: ${error.message}</p>`;
             });
         }
+        
+        // --- UI RENDERING FUNCTIONS (SAME) ---
 
-        function createHistoryItem(name, duration, timestamp) {
+        function renderRoutineSelector(routines) {
+            const selector = uiElements.routineSelector;
+            selector.innerHTML = ''; 
+            
+            const builtInSection = document.createElement('div');
+            builtInSection.className = 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6';
+            
+            const customSection = document.createElement('div');
+            customSection.className = 'grid grid-cols-2 md:grid-cols-4 gap-3';
+            
+            routines.forEach(routine => {
+                const card = document.createElement('div');
+                card.className = `p-4 rounded-xl shadow-lg cursor-pointer transition duration-300 transform hover:scale-[1.03] flex flex-col justify-between ${routine.isCustom ? 'bg-gray-700 hover:bg-gray-600' : 'bg-indigo-600 hover:bg-indigo-700'}`;
+                card.dataset.routineId = routine.id;
+                
+                card.innerHTML = `
+                    <h3 class="text-lg font-bold text-white mb-1">${routine.name}</h3>
+                    <p class="text-sm text-indigo-200">${routine.inhale}:${routine.holdIn}:${routine.exhale}:${routine.holdOut}</p>
+                    <p class="text-xs text-indigo-300">${routine.durationMinutes} min</p>
+                    ${routine.isCustom ? `<button class="delete-custom-btn mt-2 text-xs text-red-300 hover:text-red-400 self-end" data-id="${routine.id}">Delete</button>` : ''}
+                `;
+                
+                card.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('delete-custom-btn')) {
+                        startCountdown(routine);
+                    }
+                });
+
+
+                if (routine.isCustom) {
+                    const deleteBtn = card.querySelector('.delete-custom-btn');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation(); 
+                            handleDelete(routine.id, routine.name);
+                        });
+                    }
+                    customSection.appendChild(card);
+                } else {
+                    builtInSection.appendChild(card);
+                }
+            });
+
+            const builtInHeader = document.createElement('h2');
+            builtInHeader.className = 'text-xl font-semibold mb-3 mt-4 text-indigo-300';
+            builtInHeader.textContent = 'Predefined Routines';
+            selector.appendChild(builtInHeader);
+            selector.appendChild(builtInSection);
+
+            if (customSection.children.length > 0) {
+                 const customHeader = document.createElement('h2');
+                 customHeader.className = 'text-xl font-semibold mb-3 mt-6 text-indigo-300';
+                 customHeader.textContent = 'Your Saved Routines';
+                 selector.appendChild(customHeader);
+                 selector.appendChild(customSection);
+            }
+        }
+
+        function formatDuration(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes} min ${remainingSeconds} sec`;
+        }
+
+        function createHistoryItem(name, actualDuration, totalTarget, completed, timestamp) {
             const item = document.createElement('div');
-            item.className = 'bg-gray-800 p-4 rounded-lg shadow-md flex justify-between items-center transition duration-200 hover:bg-gray-700';
+            const bgColor = completed ? 'bg-green-900/20 hover:bg-green-900/30' : 'bg-red-900/20 hover:bg-red-900/30';
+            const statusText = completed 
+                ? '<span class="text-xs font-bold text-green-400">Completed</span>'
+                : `<span class="text-xs font-bold text-red-400">Stopped</span>`;
+
+            item.className = `p-4 rounded-lg shadow-md flex justify-between items-center transition duration-200 ${bgColor}`;
 
             const date = new Date(timestamp);
             const formattedDate = date.toLocaleDateString();
             const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-            const minutes = Math.floor(duration / 60);
-            const seconds = duration % 60;
-            const durationText = minutes > 0 ? `${minutes} min ${seconds} sec` : `${seconds} sec`;
+            const durationText = completed 
+                ? formatDuration(actualDuration)
+                : `${formatDuration(actualDuration)} / ${formatDuration(totalTarget)}`;
+            
+            const durationColor = completed ? 'text-green-300' : 'text-red-300';
 
             item.innerHTML = `
                 <div>
-                    <p class="text-lg font-semibold text-indigo-300">${name}</p>
-                    <p class="text-xs text-gray-400">Duration: ${durationText}</p>
+                    <p class="text-lg font-semibold text-indigo-300 mb-1">${name}</p>
+                    <p class="text-xs text-gray-400">
+                        ${statusText}
+                        <span class="${durationColor} ml-2">${durationText}</span>
+                    </p>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-300">${formattedDate}</p>
@@ -301,27 +389,53 @@
             return item;
         }
 
+        function showCustomMessage(message, type = "blue") {
+            const msgEl = document.getElementById('notification-message');
+            msgEl.textContent = message;
+            msgEl.className = `p-3 rounded-lg text-sm text-center font-semibold mb-4 w-full 
+                ${type === 'green' ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'}`;
+            msgEl.classList.remove('hidden');
+            setTimeout(() => { msgEl.classList.add('hidden'); }, 3000);
+        }
+        
+        function resetCircleVisuals() {
+            const circle = uiElements.breathingCircle;
+            circle.style.transitionDuration = '0s'; 
+            void circle.offsetWidth; 
+        }
 
-        // --- UI, TRAINING, EVENT HANDLERS (UPDATED) ---
+        function transitionCircle(scaleTarget, duration) {
+            const circle = uiElements.breathingCircle;
+            
+            requestAnimationFrame(() => {
+                circle.style.transitionDuration = '0s';
+                requestAnimationFrame(() => {
+                    circle.style.transitionDuration = `${duration}s`;
+                    requestAnimationFrame(() => {
+                        circle.style.transform = `scale(${scaleTarget})`;
+                    });
+                });
+            });
+        }
+
+
+        // --- CORE LOGIC (SAME) ---
 
         function switchTab(tabName) {
             currentScreen = tabName;
             
-            // Update button styles
             uiElements.routinesTabBtn.classList.remove('tab-active');
             uiElements.historyTabBtn.classList.remove('tab-active');
 
-            // Hide all content screens
             uiElements.mainScreen.classList.add('hidden');
             uiElements.historyScreen.classList.add('hidden');
-
+            
             if (tabName === 'routines') {
                 uiElements.routinesTabBtn.classList.add('tab-active');
                 uiElements.mainScreen.classList.remove('hidden');
             } else if (tabName === 'history') {
                 uiElements.historyTabBtn.classList.add('tab-active');
                 uiElements.historyScreen.classList.remove('hidden');
-                // Load history data when the tab is opened
                 loadTrainingHistory();
             }
         }
@@ -359,6 +473,30 @@
             }, 1000);
         }
 
+        function transitionToFirstPhase(phases) {
+            const firstPhase = phases[0];
+            uiElements.instructionText.textContent = firstPhase.name;
+            playSound(firstPhase.key, firstPhase.duration);
+            
+            const duration = firstPhase.duration;
+
+            if (firstPhase.key === 'in') {
+                transitionCircle(1.0, duration);
+            } 
+            else if (firstPhase.key === 'holdIn') {
+                transitionCircle(1.0, 0.1);
+            }
+            else if (firstPhase.key === 'out') {
+                transitionCircle(0.5, duration);
+            } 
+            else if (firstPhase.key === 'holdOut') {
+                transitionCircle(0.5, 0.1);
+            }
+            
+            currentPhase = 0;
+            phaseStartTime = Date.now();
+        }
+
         function runTraining() {
             startTime = Date.now();
             totalDurationSeconds = currentRoutine.durationMinutes * 60;
@@ -379,7 +517,6 @@
 
                 const timeSinceLastPhase = (Date.now() - phaseStartTime) / 1000;
                 
-                // Advance Phase
                 if (timeSinceLastPhase >= phases[currentPhase].duration) {
                     phaseStartTime = Date.now();
                     
@@ -399,14 +536,11 @@
                     } else if (nextPhase.key === 'holdOut') {
                         transitionCircle(0.5, 0.1); 
                     }
-
                 }
 
-                // Update Progress
                 elapsedTotalTime = (Date.now() - startTime) / 1000;
                 uiElements.progressBar.style.width = `${(elapsedTotalTime / totalDurationSeconds) * 100}%`;
 
-                // Check for completion
                 if (elapsedTotalTime >= totalDurationSeconds) {
                     const remainingTimeInCurrentPhase = phases[currentPhase].duration - timeSinceLastPhase;
 
@@ -428,6 +562,22 @@
                 cancelAnimationFrame(animationFrameId);
             }
             
+            // --- HISTORY LOGIC RUNS REGARDLESS OF COMPLETION STATUS ---
+            if (currentRoutine) {
+                const actualDurationSeconds = (Date.now() - startTime) / 1000;
+                const totalTargetSeconds = currentRoutine.durationMinutes * 60;
+                
+                if (actualDurationSeconds > 5) {
+                    saveTrainingHistory(
+                        currentRoutine.name, 
+                        actualDurationSeconds, 
+                        totalTargetSeconds, 
+                        completed
+                    );
+                }
+            }
+            // --- END HISTORY LOGIC ---
+
             resetCircleVisuals(); 
             uiElements.breathingCircle.style.transform = 'scale(0.5)';
             uiElements.breathingCircle.style.transitionDuration = '0s'; 
@@ -435,13 +585,6 @@
             if (completed) {
                 uiElements.instructionText.textContent = "TRAINING COMPLETE!";
                 playSound('finish');
-                
-                // NEW: Save completed training session to history
-                if (currentRoutine) {
-                    const durationSeconds = currentRoutine.durationMinutes * 60;
-                    saveTrainingHistory(currentRoutine.name, durationSeconds);
-                }
-
             } else {
                 uiElements.instructionText.textContent = "Paused";
             }
@@ -450,7 +593,8 @@
             document.getElementById('back-btn').classList.remove('hidden');
         }
         
-        // --- FIX: Moved handleCreateRoutine into the module scope ---
+        // --- EVENT HANDLERS (SAME) ---
+        
         function handleCreateRoutine(event) {
             event.preventDefault();
             
@@ -493,10 +637,12 @@
         }
 
         function handleBackToMain() {
-            stopTraining(false);
+            if (isTrainingRunning) {
+                stopTraining(false);
+            }
+            
             uiElements.trainingScreen.classList.add('hidden');
             
-            // Go back to the screen the user was on
             if (currentScreen === 'history') {
                 switchTab('history');
             } else {
@@ -511,42 +657,35 @@
 
         async function initializeFirebase() {
             try {
-                // Use the active config
                 app = initializeApp(activeFirebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // CRITICAL FIX: AWAIT the anonymous sign-in to complete 
                 await signInAnonymously(auth);
 
-                // Start loading routines immediately
                 loadCustomRoutines(); 
                 
             } catch (error) {
                 console.error("Fatal Error Initializing Cloud Sync:", error);
-                uiElements.loadingState.textContent = 'Fatal error loading app. Cloud sync failed.';
                 
                 // Fallback UI on failure
                 renderRoutineSelector(builtInRoutines);
                 uiElements.loadingState.classList.add('hidden');
                 uiElements.appContent.classList.remove('hidden');
-                uiElements.userIdDisplay.textContent = 'Sync Status: Connection Failed. Please ensure Firebase is initialized correctly.';
+                uiElements.userIdDisplay.textContent = 'Sync Status: Connection Failed. Please check console for details.';
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            // New Note: Tab switching event listeners
             uiElements.routinesTabBtn.addEventListener('click', () => switchTab('routines'));
             uiElements.historyTabBtn.addEventListener('click', () => switchTab('history'));
             
-            // Existing Event Listeners
             document.getElementById('stop-btn').addEventListener('click', () => stopTraining(false));
             document.getElementById('back-btn').addEventListener('click', handleBackToMain);
             uiElements.customRoutineForm.addEventListener('submit', handleCreateRoutine);
 
-            uiElements.loadingState.textContent = 'Establishing secure cloud connection...';
             initializeFirebase();
-            switchTab('routines'); // Default to routines tab
+            switchTab('routines'); 
         });
 
     </script>
@@ -564,7 +703,7 @@
 
         <!-- App Content (Hidden until loaded) --><div id="app-content" class="hidden">
             
-            <!-- Tab Navigation (THIS WAS THE MISSING BLOCK) --><div id="tabs" class="flex border-b border-indigo-900 mb-6">
+            <!-- Tab Navigation --><div id="tabs" class="flex border-b border-indigo-900 mb-6">
                 <button id="routines-tab" class="py-2 px-4 text-sm font-semibold text-gray-400 transition duration-150 hover:text-white tab-active">
                     Routines & Create
                 </button>
@@ -630,7 +769,7 @@
                     <!-- History items injected here by JS -->
                 </div>
             </div>
-            
+
             <!-- Training Screen --><div id="training-screen" class="hidden text-center flex flex-col items-center justify-center min-h-[60vh]">
                 <div id="breathing-circle-container" class="mb-12">
                     <!-- Guide Ring for Max Size --><div id="max-size-ring"></div>
