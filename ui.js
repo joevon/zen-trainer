@@ -9,11 +9,15 @@ import { builtInRoutines } from './routines.js';
 /**
  * Render the routine selector with built-in and custom routines
  */
-export function renderRoutineSelector(routines, onRoutineSelect, onRoutineDelete) {
+export function renderRoutineSelector(routines, combos = [], onRoutineSelect, onRoutineDelete) {
     const selector = document.getElementById('routine-selector');
     if (!selector) return;
 
     selector.innerHTML = '';
+
+    // Combo section (at the top)
+    const comboSection = document.createElement('div');
+    comboSection.className = 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6';
 
     const builtInSection = document.createElement('div');
     builtInSection.className = 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6';
@@ -53,6 +57,44 @@ export function renderRoutineSelector(routines, onRoutineSelect, onRoutineDelete
         }
     });
 
+    // Render combos
+    combos.forEach(combo => {
+        const card = document.createElement('div');
+        card.className = 'p-4 rounded-xl shadow-lg cursor-pointer transition duration-300 transform hover:scale-[1.03] flex flex-col justify-between bg-purple-600 hover:bg-purple-700';
+        card.dataset.comboId = combo.id;
+
+        const routineNames = combo.routines.map(id => {
+            const routine = routines.find(r => r.id === id);
+            return routine ? routine.name : id;
+        }).join(' + ');
+
+        card.innerHTML = `
+            <h3 class="text-lg font-bold text-white mb-1">${combo.name}</h3>
+            <p class="text-sm text-purple-200">${routineNames}</p>
+            <p class="text-xs text-purple-300">Combo</p>
+        `;
+
+        card.addEventListener('click', () => {
+            // Find first routine in combo
+            const firstRoutineId = combo.routines[0];
+            const firstRoutine = routines.find(r => r.id === firstRoutineId);
+            if (firstRoutine) {
+                onRoutineSelect(firstRoutine, combo);
+            }
+        });
+
+        comboSection.appendChild(card);
+    });
+
+    // Add combo section if there are combos
+    if (comboSection.children.length > 0) {
+        const comboHeader = document.createElement('h2');
+        comboHeader.className = 'text-xl font-semibold mb-3 mt-4 text-indigo-300';
+        comboHeader.textContent = 'Routine Combos';
+        selector.appendChild(comboHeader);
+        selector.appendChild(comboSection);
+    }
+
     const builtInHeader = document.createElement('h2');
     builtInHeader.className = 'text-xl font-semibold mb-3 mt-4 text-indigo-300';
     builtInHeader.textContent = 'Predefined Routines';
@@ -80,7 +122,7 @@ export function formatDuration(seconds) {
 /**
  * Create a history item element
  */
-export function createHistoryItem(name, actualDuration, totalTarget, completed, timestamp) {
+export function createHistoryItem(name, actualDuration, totalTarget, completed, timestamp, id) {
     const item = document.createElement('div');
     const bgColor = completed ? 'bg-green-900/20 hover:bg-green-900/30' : 'bg-red-900/20 hover:bg-red-900/30';
     const statusText = completed
@@ -100,17 +142,20 @@ export function createHistoryItem(name, actualDuration, totalTarget, completed, 
     const durationColor = completed ? 'text-green-300' : 'text-red-300';
 
     item.innerHTML = `
-        <div>
+        <div class="flex-1">
             <p class="text-lg font-semibold text-indigo-300 mb-1">${name}</p>
             <p class="text-xs text-gray-400">
                 ${statusText}
                 <span class="${durationColor} ml-2">${durationText}</span>
             </p>
         </div>
-        <div class="text-right">
+        <div class="text-right mr-4">
             <p class="text-sm text-gray-300">${formattedDate}</p>
             <p class="text-xs text-gray-400">${formattedTime}</p>
         </div>
+        <button class="delete-history-btn px-3 py-1 text-xs text-red-300 hover:text-red-400 hover:bg-red-900/20 rounded transition duration-150" data-id="${id}">
+            Delete
+        </button>
     `;
     return item;
 }

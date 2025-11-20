@@ -260,3 +260,22 @@ export async function loadTrainingHistory(callback) {
         callback([]);
     });
 }
+
+/**
+ * Delete a training history entry from Firebase
+ */
+export async function deleteHistoryEntry(id) {
+    const ref = getHistoryCollectionRef();
+    if (!ref) return { success: false, error: "Database not initialized" };
+
+    try {
+        // Ensure user is authenticated before writing
+        await ensureAuthenticated();
+
+        await deleteDoc(doc(ref, id));
+        return { success: true };
+    } catch (e) {
+        console.error("Error deleting history entry: ", e);
+        return { success: false, error: e };
+    }
+}

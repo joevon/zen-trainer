@@ -20,8 +20,8 @@
 
 export const builtInRoutines = [
     {
-        id: 'calm',
-        name: 'Calm Down',
+        id: 'lah',
+        name: 'LAH',
         durationMinutes: 6,
         inhale: 4,
         holdIn: 0,
@@ -30,14 +30,27 @@ export const builtInRoutines = [
         isCustom: false
     },
     {
-        id: 'extended',
-        name: 'Extended Out',
+        id: 'led',
+        name: 'LED',
         durationMinutes: 3,
         inhale: 4,
         holdIn: 0,
         exhale: 12,
         holdOut: 0,
         isCustom: false
+    },
+    {
+        id: 'cyclic-sighing',
+        name: 'Cyclic Sighing',
+        durationMinutes: 2,
+        inhale: 5,
+        holdIn: 2, // Used for "top-up inhale"
+        exhale: 8,
+        holdOut: 0,
+        isCustom: false,
+        phaseLabels: {
+            holdIn: 'TOP-UP INHALE' // Custom label for the top-up phase
+        }
     },
     {
         id: 'box',
@@ -58,5 +71,29 @@ export const builtInRoutines = [
         exhale: 8,
         holdOut: 0,
         isCustom: false
+    }
+];
+
+/**
+ * Routine Combos - Sequences of routines that run in order
+ *
+ * Format:
+ * - id: unique identifier
+ * - name: display name
+ * - routines: array of routine IDs to run in sequence
+ * - transitionSound: sound to play between routines (optional)
+ */
+export const routineCombos = [
+    {
+        id: 'morning',
+        name: 'Morning',
+        routines: ['lah', 'led'],
+        transitionSound: 'start'
+    },
+    {
+        id: 'evening',
+        name: 'Evening',
+        routines: ['led', 'cyclic-sighing'],
+        transitionSound: 'start'
     }
 ];
