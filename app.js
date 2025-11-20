@@ -322,11 +322,55 @@ function initializeComboProgressBar() {
 function updateProgressBar(elapsedTotalTime, elapsedRoutineTime) {
     const progressPercent = Math.min((elapsedTotalTime / totalDurationSeconds) * 100, 100);
 
-    // For combos, set the filled portion color based on current routine
+    // For combos, create a gradient that shows completed routines' colors
     if (currentCombo && currentCombo.routines.length > 1) {
         const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b']; // indigo, purple, pink, amber
-        const currentRoutineColor = colors[comboRoutineIndex % colors.length];
-        uiElements.progressBar.style.background = currentRoutineColor; // Solid color matching current routine
+
+        // Calculate routine durations and boundaries
+        const routineDurations = currentCombo.routines.map(routineId => {
+            const routine = allAvailableRoutines.find(r => r.id === routineId);
+            return routine ? routine.durationMinutes * 60 : 0;
+        });
+
+        const totalDuration = routineDurations.reduce((sum, d) => sum + d, 0);
+        const filledColorStops = [];
+        let cumulativePercent = 0;
+
+        // Build gradient for filled portion up to current progress
+        for (let i = 0; i <= comboRoutineIndex; i++) {
+            const routinePercent = (routineDurations[i] / totalDuration) * 100;
+            const routineStartPercent = cumulativePercent;
+            const routineEndPercent = Math.min(cumulativePercent + routinePercent, progressPercent);
+
+            if (routineEndPercent > routineStartPercent) {
+                const routineColor = colors[i % colors.length];
+                // If this is the current routine and we're partway through it
+                if (i === comboRoutineIndex && routineEndPercent < cumulativePercent + routinePercent) {
+                    // Current routine - use its color up to current progress
+                    filledColorStops.push(`${routineColor} ${routineStartPercent}%`);
+                    filledColorStops.push(`${routineColor} ${routineEndPercent}%`);
+                } else if (i < comboRoutineIndex) {
+                    // Completed routine - use its full color
+                    filledColorStops.push(`${routineColor} ${routineStartPercent}%`);
+                    filledColorStops.push(`${routineColor} ${routineEndPercent}%`);
+                } else {
+                    // Current routine, fully completed
+                    filledColorStops.push(`${routineColor} ${routineStartPercent}%`);
+                    filledColorStops.push(`${routineColor} ${routineEndPercent}%`);
+                }
+            }
+
+            cumulativePercent += routinePercent;
+            if (cumulativePercent >= progressPercent) break;
+        }
+
+        // Set gradient background for filled portion
+        if (filledColorStops.length > 0) {
+            uiElements.progressBar.style.background = `linear-gradient(to right, ${filledColorStops.join(', ')})`;
+        } else {
+            // Fallback to current routine color
+            uiElements.progressBar.style.background = colors[comboRoutineIndex % colors.length];
+        }
     }
 
     // Update width
@@ -443,10 +487,11 @@ function runTraining() {
 
         // Calculate elapsed time: for combos, use combo start time; otherwise use routine start time
         // Subtract paused time to account for pauses
+        const currentPausedTime = isPaused ? pausedTime + ((Date.now() - pauseStartTime) / 1000) : pausedTime;
         const elapsedTotalTime = currentCombo && comboStartTime
-            ? ((Date.now() - comboStartTime) / 1000) - pausedTime
-            : ((Date.now() - startTime) / 1000) - pausedTime;
-        const elapsedRoutineTime = ((Date.now() - routineStartTime) / 1000) - pausedTime;
+            ? ((Date.now() - comboStartTime) / 1000) - currentPausedTime
+            : ((Date.now() - startTime) / 1000) - currentPausedTime;
+        const elapsedRoutineTime = ((Date.now() - routineStartTime) / 1000) - currentPausedTime;
         const routineDuration = currentRoutine.durationMinutes * 60;
 
         // Update progress bar with multi-color support for combos
