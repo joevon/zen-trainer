@@ -7,7 +7,7 @@
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, collection, query, orderBy, onSnapshot, addDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { firebaseConfig as defaultConfig } from './firebase-config-values.js';
 
@@ -33,6 +33,35 @@ function getFirebaseConfig() {
 
 let app, db, auth;
 const activeFirebaseConfig = getFirebaseConfig();
+
+/**
+ * Ensure user is authenticated before operations
+ */
+async function ensureAuthenticated() {
+    if (!auth) {
+        throw new Error("Auth not initialized");
+    }
+
+    // If already authenticated, return immediately
+    if (auth.currentUser) {
+        return auth.currentUser;
+    }
+
+    // Wait for auth state to be ready
+    return new Promise((resolve, reject) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            unsubscribe();
+            if (user) {
+                resolve(user);
+            } else {
+                // Try to sign in anonymously if not authenticated
+                signInAnonymously(auth)
+                    .then(() => resolve(auth.currentUser))
+                    .catch(reject);
+            }
+        });
+    });
+}
 
 /**
  * Initialize Firebase and authenticate anonymously
@@ -79,9 +108,12 @@ export function getHistoryCollectionRef() {
  */
 export async function saveCustomRoutine(routine) {
     const ref = getTrainingsCollectionRef();
-    if (!ref) return;
+    if (!ref) return { success: false, error: "Database not initialized" };
 
     try {
+        // Ensure user is authenticated before writing
+        await ensureAuthenticated();
+
         const routineData = { ...routine, isCustom: true, createdAt: Date.now() };
         await addDoc(ref, routineData);
         return { success: true };
@@ -122,9 +154,12 @@ export function loadCustomRoutines(callback) {
  */
 export async function deleteCustomRoutine(id) {
     const ref = getTrainingsCollectionRef();
-    if (!ref) return { success: false };
+    if (!ref) return { success: false, error: "Database not initialized" };
 
     try {
+        // Ensure user is authenticated before writing
+        await ensureAuthenticated();
+
         await deleteDoc(doc(ref, id));
         return { success: true };
     } catch (e) {
@@ -138,9 +173,12 @@ export async function deleteCustomRoutine(id) {
  */
 export async function saveTrainingHistory(routineName, actualDurationSeconds, totalTargetSeconds, completed) {
     const ref = getHistoryCollectionRef();
-    if (!ref) return { success: false };
+    if (!ref) return { success: false, error: "Database not initialized" };
 
     try {
+        // Ensure user is authenticated before writing
+        await ensureAuthenticated();
+
         await addDoc(ref, {
             routineName: routineName,
             actualDurationSeconds: Math.floor(actualDurationSeconds),

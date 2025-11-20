@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to trainings collection
+    // Path: artifacts/{projectId}/public/data/trainings/{routineId}
+    match /artifacts/{projectId}/public/data/trainings/{routineId} {
+      allow read, write: if true;
+    }
+
+    // Allow read/write access to history collection
+    // Path: artifacts/{projectId}/public/data/history/{historyId}
+    match /artifacts/{projectId}/public/data/history/{historyId} {
+      allow read, write: if true;
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
