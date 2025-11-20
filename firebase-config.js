@@ -72,10 +72,14 @@ export async function initializeFirebase() {
         db = getFirestore(app);
         auth = getAuth(app);
 
-        await signInAnonymously(auth);
+        console.log("Initializing Firebase auth...");
+        const userCredential = await signInAnonymously(auth);
+        console.log("Anonymous auth successful:", userCredential.user.uid);
+
         return { app, db, auth, success: true };
     } catch (error) {
         console.error("Fatal Error Initializing Cloud Sync:", error);
+        console.error("Error details:", error.code, error.message);
         return { app: null, db: null, auth: null, success: false, error };
     }
 }
@@ -112,13 +116,15 @@ export async function saveCustomRoutine(routine) {
 
     try {
         // Ensure user is authenticated before writing
-        await ensureAuthenticated();
+        const user = await ensureAuthenticated();
+        console.log("Save routine: User authenticated:", user ? "Yes" : "No", user?.uid || "N/A");
 
         const routineData = { ...routine, isCustom: true, createdAt: Date.now() };
         await addDoc(ref, routineData);
         return { success: true };
     } catch (e) {
         console.error("Error adding document: ", e);
+        console.error("Auth state:", auth?.currentUser ? "Authenticated" : "Not authenticated");
         return { success: false, error: e };
     }
 }
@@ -126,9 +132,18 @@ export async function saveCustomRoutine(routine) {
 /**
  * Load custom routines from Firebase with real-time updates
  */
-export function loadCustomRoutines(callback) {
+export async function loadCustomRoutines(callback) {
     const ref = getTrainingsCollectionRef();
     if (!ref) {
+        callback([]);
+        return;
+    }
+
+    // Ensure authentication is ready before setting up listener
+    try {
+        await ensureAuthenticated();
+    } catch (error) {
+        console.error("Auth error in loadCustomRoutines:", error);
         callback([]);
         return;
     }
@@ -158,12 +173,14 @@ export async function deleteCustomRoutine(id) {
 
     try {
         // Ensure user is authenticated before writing
-        await ensureAuthenticated();
+        const user = await ensureAuthenticated();
+        console.log("Delete: User authenticated:", user ? "Yes" : "No", user?.uid || "N/A");
 
         await deleteDoc(doc(ref, id));
         return { success: true };
     } catch (e) {
         console.error("Error deleting document: ", e);
+        console.error("Auth state:", auth?.currentUser ? "Authenticated" : "Not authenticated");
         return { success: false, error: e };
     }
 }
@@ -196,9 +213,18 @@ export async function saveTrainingHistory(routineName, actualDurationSeconds, to
 /**
  * Load training history from Firebase with real-time updates
  */
-export function loadTrainingHistory(callback) {
+export async function loadTrainingHistory(callback) {
     const ref = getHistoryCollectionRef();
     if (!ref) {
+        callback([]);
+        return;
+    }
+
+    // Ensure authentication is ready before setting up listener
+    try {
+        await ensureAuthenticated();
+    } catch (error) {
+        console.error("Auth error in loadTrainingHistory:", error);
         callback([]);
         return;
     }

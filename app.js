@@ -48,6 +48,9 @@ function switchTab(tabName) {
         uiElements.historyScreen.classList.remove('hidden');
         loadTrainingHistory((sessions) => {
             renderHistory(sessions);
+        }).catch(error => {
+            console.error("Error loading history:", error);
+            renderHistory([]);
         });
     }
 }
@@ -336,7 +339,7 @@ async function init() {
     const firebaseResult = await initializeFirebase();
 
     if (firebaseResult.success) {
-        // Load custom routines with real-time updates
+        // Load custom routines with real-time updates (wait for auth)
         loadCustomRoutines((customRoutines) => {
             const allRoutines = [...builtInRoutines, ...customRoutines];
             renderRoutineSelector(
@@ -348,6 +351,17 @@ async function init() {
             uiElements.loadingState.classList.add('hidden');
             uiElements.appContent.classList.remove('hidden');
             uiElements.userIdDisplay.textContent = `Sync Status: Cloud Connected (Public Data)`;
+        }).catch(error => {
+            console.error("Error loading routines:", error);
+            // Fallback to built-in routines if load fails
+            renderRoutineSelector(
+                builtInRoutines,
+                startCountdown,
+                handleDelete
+            );
+            uiElements.loadingState.classList.add('hidden');
+            uiElements.appContent.classList.remove('hidden');
+            uiElements.userIdDisplay.textContent = 'Sync Status: Using built-in routines only';
         });
     } else {
         // Fallback to built-in routines only
