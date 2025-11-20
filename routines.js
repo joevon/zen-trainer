@@ -43,7 +43,7 @@ export const builtInRoutines = [
         id: 'cyclic-sighing',
         name: 'Cyclic Sighing',
         durationMinutes: 2,
-        inhale: 5,
+        inhale: 3,
         holdIn: 2, // Used for "top-up inhale"
         exhale: 8,
         holdOut: 0,
