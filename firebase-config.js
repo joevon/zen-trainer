@@ -194,18 +194,32 @@ export async function saveTrainingHistory(routineName, actualDurationSeconds, to
 
     try {
         // Ensure user is authenticated before writing
-        await ensureAuthenticated();
+        const user = await ensureAuthenticated();
+        console.log("Save history: User authenticated:", user ? "Yes" : "No", user?.uid || "N/A");
 
-        await addDoc(ref, {
+        const historyData = {
             routineName: routineName,
             actualDurationSeconds: Math.floor(actualDurationSeconds),
             totalTargetSeconds: totalTargetSeconds,
             completed: completed,
             timestamp: Date.now(),
-        });
+        };
+
+        // Check approximate size (rough estimate)
+        const dataSize = JSON.stringify(historyData).length;
+        console.log("History data size:", dataSize, "bytes (limit: 2048)");
+
+        if (dataSize > 2048) {
+            console.warn("History data exceeds 2KB limit!");
+        }
+
+        await addDoc(ref, historyData);
+        console.log("History saved successfully");
         return { success: true };
     } catch (e) {
         console.error("Error saving history: ", e);
+        console.error("Error code:", e.code, "Error message:", e.message);
+        console.error("Auth state:", auth?.currentUser ? "Authenticated" : "Not authenticated");
         return { success: false, error: e };
     }
 }

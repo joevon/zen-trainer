@@ -219,13 +219,31 @@ function stopTraining(completed = false) {
         const actualDurationSeconds = (Date.now() - startTime) / 1000;
         const totalTargetSeconds = currentRoutine.durationMinutes * 60;
 
+        console.log("Attempting to save history:", {
+            routineName: currentRoutine.name,
+            actualDuration: actualDurationSeconds,
+            targetDuration: totalTargetSeconds,
+            completed: completed
+        });
+
         if (actualDurationSeconds > 5) {
             saveTrainingHistory(
                 currentRoutine.name,
                 actualDurationSeconds,
                 totalTargetSeconds,
                 completed
-            );
+            ).then(result => {
+                console.log("Save history result:", result);
+                if (result.success) {
+                    console.log("✅ History saved successfully!");
+                } else {
+                    console.error("❌ Failed to save history:", result.error);
+                }
+            }).catch(error => {
+                console.error("❌ Error saving history:", error);
+            });
+        } else {
+            console.log("Skipping history save - duration too short:", actualDurationSeconds);
         }
     }
 
