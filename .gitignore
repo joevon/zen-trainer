@@ -1,0 +1,10 @@
+.env
+.env.local
+node_modules/
+.DS_Store
+*.log
+
+# Note: firebase-config-values.js IS committed because:
+# - Browser JavaScript cannot access .env files
+# - Firebase API keys are PUBLIC by design (security comes from Security Rules)
+# - See firebase-security-rules.txt for proper security setup
